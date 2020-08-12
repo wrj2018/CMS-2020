@@ -1,0 +1,78 @@
+# LAMMPS input file for calculating Peierls stress (stress controlled loading mode)
+# Author: Wurong Jian, wurong@ucsb.edu 
+# If you use this input file, please cite this work
+
+variable	sname index ms
+log		${sname}.log 
+
+variable sigma equal 3000.0    		# applied stress in bar=0.1 MPa
+variable energyConv equal 1602191.7     # conversion factor
+variable Etol equal 1.0e-12
+
+# ------------------------ INITIALIZATION ----------------------------
+units metal         
+dimension 3          
+boundary p f p 
+
+atom_style       atomic    
+read_data        data.edge_Nb_112_50nm_pad_min
+
+neighbor        2.5  bin
+neigh_modify    delay 10 every 2 check yes one 30000 page 300000
+
+# Potentials
+pair_style      eam/alloy 
+pair_coeff  * * CuNb_eam1.eam.alloy Nb
+
+# ------- fixed region      -------------------------------------------------
+variable tmp0 equal "ylo+6"
+variable ylo0 equal ${tmp0}
+variable tmp1 equal "yhi-6"
+variable yhi0 equal ${tmp1}
+
+region upper block INF INF ${yhi0} INF INF INF units box
+region lower block INF INF INF ${ylo0} INF INF units box
+
+group  upper region upper
+group  lower region lower
+group  boundary union upper lower
+group  mobile subtract all boundary     
+
+# define the force to apply
+variable nupper equal count(upper)
+print "number of atoms in upper == ${nupper}"
+variable nlower equal count(lower)
+print "number of atoms in lower == ${nlower}"
+
+variable tmp2 equal "lx"
+variable tmp3 equal "lz"
+
+variable tmp4 equal -v_tmp2*v_tmp3/v_nupper*v_sigma/v_energyConv
+variable appforce1 equal ${tmp4}
+
+variable tmp5 equal v_tmp2*v_tmp3/v_nlower*v_sigma/v_energyConv
+variable appforce2 equal ${tmp5}
+
+print "appforce1 == ${appforce1}"
+print "appforce2 == ${appforce2}"
+
+fix 1 upper setforce NULL 0.0 NULL 
+fix 2 lower setforce NULL 0.0 NULL 
+fix 3 upper addforce ${appforce1} 0.0 0.0
+fix 4 lower addforce ${appforce2} 0.0 0.0
+fix_modify 3 energy yes
+fix_modify 4 energy yes
+
+thermo          20
+thermo_style    custom step cpu etotal pe press pxx pyy pzz pxy pxz pyz vol density v_appforce1 v_appforce2
+
+dump            1 all custom 10000 dump.* id type x y z fx fy fz
+dump_modify     1 sort id
+
+min_style cg
+minimize  ${Etol} ${Etol} 100000 100000
+
+min_style fire
+minimize  ${Etol} ${Etol} 100000 100000
+
+print           "All done"

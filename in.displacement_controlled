@@ -1,0 +1,96 @@
+# LAMMPS input file for calculating Peierls stress (displacement controlled loading mode)
+# Author: Wurong Jian, wurong@ucsb.edu 
+# If you use this input file, please cite this work
+
+variable	sname index ms
+log		${sname}.log
+
+variable ustrain equal -2e-5
+variable energyConv equal 160.21917     # conversion factor
+variable Etol equal 1.0e-12
+
+# ------------------------ INITIALIZATION ----------------------------
+units metal         
+dimension 3          
+boundary p f p 
+        
+atom_style       atomic    
+read_data        data.edge_Nb_112_50nm_pad_min
+
+neighbor        2.5  bin
+neigh_modify    delay 10 every 2 check yes one 30000 page 300000
+
+# Potentials
+pair_style      eam/alloy 
+pair_coeff  * * CuNb_eam1.eam.alloy Nb
+
+# -------------------------RELAXATION SETTINGS ---------------------------------
+variable tmp0 equal "ylo+6"
+variable ylo0 equal ${tmp0}
+variable tmp1 equal "yhi-6"
+variable yhi0 equal ${tmp1}
+
+region upper block INF INF ${yhi0} INF INF INF units box
+region lower block INF INF INF ${ylo0} INF INF units box
+
+group  upper region upper
+group  lower region lower
+group  boundary union upper lower
+group  mobile subtract all boundary
+
+# define the force to apply
+variable tmp2 equal lx
+variable LXX equal ${tmp2}
+variable tmp3 equal ly
+variable LYY equal ${tmp3}
+variable tmp4 equal lz
+variable LZZ equal ${tmp4} 
+
+variable udisp equal ${ustrain}*${LYY}
+
+
+variable c loop 2501
+label loopc
+
+variable tstrain equal ${ustrain}*($c-1)
+
+compute tfx upper reduce sum fx
+
+thermo          1
+thermo_style    custom step c_tfx
+
+run 0
+
+variable tfxx equal c_tfx
+
+
+variable sigmaxx equal -${tfxx}*${energyConv}/(${LXX}*${LZZ})     #####GPa
+
+dump            1 all custom 100000 dump.${c}.load id type x y z fx fy fz
+dump_modify     1 sort id
+
+thermo          20
+thermo_style    custom step cpu etotal pe press pxx pyy pzz pxy pxz pyz vol density
+
+displace_atoms upper move ${udisp} 0.0 0.0 units box
+
+fix 1 upper setforce 0.0 0.0 NULL
+fix 2 lower setforce 0.0 0.0 NULL
+
+min_style cg
+minimize  ${Etol} ${Etol} 100000 100000
+
+min_style fire
+minimize  ${Etol} ${Etol} 100000 100000
+
+print "${tstrain} ${sigmaxx}" append strain-stress.txt
+
+uncompute tfx
+unfix 1
+unfix 2
+undump 1
+
+next c
+jump in.displacement_controlled loopc 
+
+print           "All done"
