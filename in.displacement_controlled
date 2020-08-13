@@ -22,7 +22,7 @@ neigh_modify    delay 10 every 2 check yes one 30000 page 300000
 
 # Potentials
 pair_style      eam/alloy 
-pair_coeff  * * CuNb_eam1.eam.alloy Nb
+pair_coeff  * * Nb.eam.alloy Nb
 
 # -------------------------RELAXATION SETTINGS ---------------------------------
 variable tmp0 equal "ylo+6"
